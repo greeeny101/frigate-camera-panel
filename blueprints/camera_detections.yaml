@@ -1,0 +1,174 @@
+blueprint:
+  name: Camera detections – notify and open the Frigate camera panel
+  description: >-
+    Notifies Android phones when Frigate sees someone or something you care about, with a snapshot. Tapping
+    the notification opens the Frigate camera panel on that camera. It never opens by itself.
+
+
+    **People** count when Frigate makes them an alert (so its required zones apply). With "unknown", a new
+    person waits a few seconds for face recognition and only notifies if nobody was recognised.
+    **Names** are Frigate sub labels, e.g. a pet or person from face recognition or a classification model.
+    **Labels** notify whenever seen, e.g. fox.
+
+
+    Unknown people always get a new notification with sound. Names and labels replace their camera's last
+    notification silently while it's still showing; dismiss it to hear the next one.
+  domain: automation
+  source_url: https://github.com/greeeny101/frigate-camera-panel/blob/main/blueprints/camera_detections.yaml
+  input:
+    phones:
+      name: Phones
+      description: Android phones with the Home Assistant app.
+      selector:
+        device:
+          integration: mobile_app
+          multiple: true
+    cameras:
+      name: Cameras
+      description: >-
+        Frigate camera names to watch, each with the name shown in notifications, e.g.
+        `front_door: Front door`.
+      selector:
+        object:
+    people:
+      name: People
+      default: unknown
+      selector:
+        select:
+          options:
+            - label: Only people Frigate doesn't recognise
+              value: unknown
+            - label: Everyone
+              value: all
+            - label: Nobody
+              value: none
+    recognition_wait:
+      name: Wait for face recognition
+      description: How long a new person waits for Frigate to recognise them (only with "unknown").
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 30
+          unit_of_measurement: s
+    names:
+      name: Names
+      description: Frigate sub labels that notify whenever seen, e.g. a pet's name.
+      default: []
+      selector:
+        text:
+          multiple: true
+    labels:
+      name: Labels
+      description: Objects that notify whenever seen, e.g. fox. Cats are seen a lot; prefer a name.
+      default: []
+      selector:
+        select:
+          multiple: true
+          custom_value: true
+          options: [car, cat, dog, fox, bird, rabbit]
+    panel:
+      name: Panel address
+      description: Where the Frigate camera panel opens (Configure → Panel → Address).
+      default: /cameras
+      selector:
+        text:
+    topic_prefix:
+      name: Frigate MQTT topic prefix
+      default: frigate
+      selector:
+        text:
+
+mode: parallel
+max: 20
+
+trigger_variables:
+  topic_prefix: !input topic_prefix
+
+triggers:
+  - trigger: mqtt
+    topic: "{{ topic_prefix }}/reviews"
+
+variables:
+  topic_prefix: !input topic_prefix
+  phones: !input phones
+  cameras: !input cameras
+  people: !input people
+  recognition_wait: !input recognition_wait
+  names: !input names
+  labels: !input labels
+  panel: !input panel
+  review: "{{ trigger.payload_json }}"
+  camera: "{{ review.after.camera if review else '' }}"
+  # What's notify-worthy in this message that wasn't in the previous one for the same review.
+  new_reasons: >-
+    {%- macro reasons(r) -%}
+      {%- set objs = r.data.objects | map('regex_replace', '-verified$', '') | list -%}
+      {%- set ns = namespace(out=[]) -%}
+      {%- if people != 'none' and r.severity == 'alert' and 'person' in objs -%}
+        {%- set ns.out = ns.out + ['person'] -%}
+      {%- endif -%}
+      {%- for n in names if n in r.data.sub_labels -%}{%- set ns.out = ns.out + ['name:' ~ n] -%}{%- endfor -%}
+      {%- for l in labels if l in objs -%}{%- set ns.out = ns.out + ['label:' ~ l] -%}{%- endfor -%}
+      {{- ns.out | join(',') -}}
+    {%- endmacro -%}
+    {%- if not review or camera not in cameras -%}
+      []
+    {%- else -%}
+      {%- set now = reasons(review.after).split(',') | select | list -%}
+      {%- set before = [] if review.type == 'new' else reasons(review.before).split(',') | select | list -%}
+      {{ now | reject('in', before) | list }}
+    {%- endif -%}
+
+conditions:
+  - condition: template
+    value_template: "{{ new_reasons | count > 0 }}"
+
+actions:
+  - repeat:
+      for_each: "{{ new_reasons }}"
+      sequence:
+        - variables:
+            reason: "{{ repeat.item }}"
+        - if:
+            - condition: template
+              value_template: "{{ reason == 'person' and people == 'unknown' and recognition_wait > 0 }}"
+          then:
+            # Frigate recognises faces a few seconds into a review; known people drop their plain "person".
+            - wait_for_trigger:
+                - trigger: mqtt
+                  topic: "{{ topic_prefix }}/reviews"
+                  value_template: >-
+                    {{ value_json.after.id ~ ('|known' if 'person' not in value_json.after.data.objects else '') }}
+                  payload: "{{ review.after.id }}|known"
+              timeout:
+                seconds: "{{ recognition_wait }}"
+              continue_on_timeout: true
+            - condition: template
+              value_template: "{{ wait.trigger is none }}"
+        - variables:
+            where: "{{ cameras[camera] }}"
+            who: >-
+              {%- if reason == 'person' -%}Someone
+              {%- else -%}{{ reason.split(':', 1)[1] | replace('_', ' ') | capitalize }}{%- endif -%}
+            zones: "{{ review.after.data.zones | map('replace', '_', ' ') | join(', ') }}"
+            event: "{{ review.after.data.detections | last }}"
+            tag: >-
+              {{ 'frigate-' ~ review.after.id if reason == 'person' else 'frigate-' ~ camera ~ '-' ~ reason }}
+        - repeat:
+            for_each: "{{ phones }}"
+            sequence:
+              - action: "notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}"
+                continue_on_error: true
+                data:
+                  title: "{{ who }} at {{ where }}"
+                  message: "{{ (zones ~ ' · ') if zones else '' }}Tap to watch."
+                  data:
+                    tag: "{{ tag }}"
+                    alert_once: "{{ reason != 'person' }}"
+                    group: camera-detections
+                    channel: Camera detections
+                    importance: high
+                    visibility: public
+                    image: "/api/frigate/notifications/{{ event }}/snapshot.jpg"
+                    clickAction: "{{ panel }}?camera={{ camera }}"

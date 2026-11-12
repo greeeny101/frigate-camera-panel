@@ -1,0 +1,8 @@
+# Lint settings for the integration and its tests (run by the tests workflow).
+line-length = 120
+
+[lint.isort]
+# As Home Assistant core sorts its imports.
+force-sort-within-sections = true
+known-first-party = ["homeassistant", "frigate_camera_panel"]
+combine-as-imports = true

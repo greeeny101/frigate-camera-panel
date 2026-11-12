@@ -1,0 +1,116 @@
+blueprint:
+  name: Doorbell press – notify and open the Frigate camera panel
+  description: >-
+    When the doorbell is pressed, each Android phone gets a notification with a snapshot, and the Frigate camera
+    panel opens by itself on the doorbell's camera.
+
+
+    The panel opens through the Home Assistant app's command_webview. The first time, each phone asks for
+    permission: allow "Display over other apps" ("Appear on top" on Samsung phones), or it can only open from the
+    notification. A locked phone opens the panel behind the lock screen. iPhones get the notification only.
+
+
+    To try it without anyone at the door: open the automation, then ⋮ → Run actions.
+  domain: automation
+  source_url: https://github.com/greeeny101/frigate-camera-panel/blob/main/blueprints/doorbell_press.yaml
+  input:
+    doorbell:
+      name: Doorbell press sensor
+      description: Turns on when the doorbell is pressed, e.g. a Reolink doorbell's Visitor sensor.
+      selector:
+        entity:
+          domain: binary_sensor
+    camera:
+      name: Doorbell camera
+      description: The doorbell's camera entity, for the snapshot (the Frigate one or the doorbell's own).
+      selector:
+        entity:
+          domain: camera
+    frigate_camera:
+      name: Frigate camera name
+      description: The doorbell's name in Frigate's config, e.g. front_door. The panel opens on it.
+      selector:
+        text:
+    phones:
+      name: Phones
+      description: Android phones with the Home Assistant app.
+      selector:
+        device:
+          integration: mobile_app
+          multiple: true
+    open_panel:
+      name: Open the panel by itself
+      description: Without it, the panel opens only when the notification is tapped.
+      default: true
+      selector:
+        boolean:
+    panel:
+      name: Panel address
+      description: Where the Frigate camera panel opens (Configure → Panel → Address).
+      default: /cameras
+      selector:
+        text:
+    cool_down:
+      name: Quiet time after a press
+      description: Presses within this time are ignored, so a visit gives one alert.
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 300
+          unit_of_measurement: s
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input doorbell
+    from: "off"
+    to: "on"
+
+variables:
+  phones: !input phones
+  open_panel: !input open_panel
+  camera: !input camera
+  frigate_camera: !input frigate_camera
+  cool_down: !input cool_down
+  panel_path: !input panel
+  link: "{{ panel_path }}?camera={{ frigate_camera }}"
+
+actions:
+  - repeat:
+      for_each: "{{ phones }}"
+      sequence:
+        - variables:
+            notify: "notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}"
+        - action: "{{ notify }}"
+          # One phone being offline mustn't stop the others.
+          continue_on_error: true
+          data:
+            title: Someone's at the door
+            message: Tap to see who it is.
+            data:
+              # A new press replaces the last notification.
+              tag: doorbell
+              # Its own channel, so its sound can be set on the phone.
+              channel: Doorbell
+              importance: high
+              # Deliver straight away, even when the phone is saving battery.
+              priority: high
+              ttl: 0
+              # Show the snapshot on the lock screen.
+              visibility: public
+              timeout: 600
+              image: "/api/camera_proxy/{{ camera }}"
+              clickAction: "{{ link }}"
+        - if: "{{ open_panel }}"
+          then:
+            - action: "{{ notify }}"
+              continue_on_error: true
+              data:
+                message: command_webview
+                data:
+                  command: "{{ link }}"
+  - delay:
+      seconds: "{{ cool_down }}"

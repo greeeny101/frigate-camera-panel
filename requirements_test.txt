@@ -1,0 +1,4 @@
+# The tests in tests/: the integration running inside Home Assistant (needs Python 3.14).
+# Home Assistant's own test package, released with each Home Assistant version (betas too) and pinned to it, so it
+# brings the matching Home Assistant. Unpinned on purpose: CI runs the newest release, and with --pre the newest beta.
+pytest-homeassistant

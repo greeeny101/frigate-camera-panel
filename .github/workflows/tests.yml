@@ -1,0 +1,67 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  # Thursday morning: the monthly beta is out by Wednesday evening, a week before the release.
+  schedule:
+    - cron: "0 6 * * 4"
+  workflow_dispatch:
+
+jobs:
+  panel:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # HACS installs the built panel from the repository, so it must match the source.
+      - run: npm run build
+      - name: Built panel is up to date
+        run: git diff --exit-code custom_components/frigate_camera_panel/frontend || (echo "Run npm run build and commit the result." && exit 1)
+
+  integration:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      # ruff is pinned so a new release can't fail the build; its settings are in ruff.toml.
+      - run: pip install pytest pytest-asyncio ruff==0.17.3
+      - run: ruff check custom_components python-tests tests
+      - run: python -m pytest python-tests -q
+
+  # The integration running inside Home Assistant (tests/), against the newest release and the newest beta, so a
+  # Home Assistant change that breaks it shows up here before it reaches anyone's house.
+  home-assistant:
+    name: home-assistant (${{ matrix.channel }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [release, beta]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - run: pip install -r requirements_test.txt
+      # pytest-homeassistant is released with each Home Assistant beta too, pinned to it, so this brings the newest
+      # beta (between betas, the newest release again). Upgrading homeassistant on its own would leave the test
+      # package behind.
+      - name: Home Assistant beta
+        if: matrix.channel == 'beta'
+        run: pip install --pre --upgrade pytest-homeassistant
+      - name: The libraries of the Home Assistant integrations the tests use (the versions it asks for)
+        run: pip install $(python tests/ha_requirements.py)
+      - name: Versions
+        run: pip list 2>/dev/null | grep -iE "^(homeassistant|home-assistant-frontend|pytest-homeassistant) "
+      - run: python -m pytest tests -q

@@ -1,0 +1,126 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Frigate camera panel",
+        "description": "Which Frigate instance should the panel show the cameras of?",
+        "data": {
+          "frigate_entry_id": "Frigate instance"
+        }
+      }
+    },
+    "abort": {
+      "no_frigate": "Set up the Frigate integration first: the panel shows its cameras.",
+      "already_configured": "Every Frigate instance already has a camera panel."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Frigate camera panel",
+        "menu_options": {
+          "panel": "Panel",
+          "cameras": "Cameras",
+          "camera": "Camera settings"
+        }
+      },
+      "panel": {
+        "title": "Panel",
+        "description": "The camera panel for this Frigate instance. Changes show after the page is reloaded.",
+        "data": {
+          "panel": "Set up the panel",
+          "url_path": "Address",
+          "sidebar": "Show in the sidebar",
+          "name": "Title",
+          "theme": "Look",
+          "low_bandwidth": "Use the lighter stream",
+          "home_hosts": "Addresses that mean at home (optional)",
+          "talk_quality": "Picture while talking",
+          "show_stats": "Show the stream's resolution, bitrate and frame rate",
+          "clip_before": "Clips start this long before an event",
+          "clip_after": "Clips end this long after an event",
+          "clip_min": "Shortest clip"
+        },
+        "data_description": {
+          "panel": "Untick to keep using a panel_custom panel from configuration.yaml instead.",
+          "url_path": "The panel opens at this address, e.g. cameras for /cameras. Dashboard buttons and notifications link to it.",
+          "sidebar": "Without it, the panel opens only from a link, such as a dashboard button or a notification. Anyone with the link can still open it.",
+          "name": "Shown in the sidebar.",
+          "low_bandwidth": "Each camera's lighter stream (a substream) saves mobile data.",
+          "home_hosts": "Separated by commas, e.g. 192.168.1.10, homeassistant.local. Blank: any private network address counts as at home.",
+          "talk_quality": "The lighter stream leaves more room for the sound. It needs the talk source too (see the README)."
+        }
+      },
+      "cameras": {
+        "title": "Cameras",
+        "description": "The cameras the panel shows, from Frigate's config. A camera without a stream in Frigate's go2rtc can't be watched live, so the panel leaves it out.",
+        "data": {
+          "cameras": "Cameras"
+        }
+      },
+      "camera": {
+        "title": "Camera settings",
+        "description": "Which camera's settings would you like to change?",
+        "data": {
+          "camera": "Camera"
+        }
+      },
+      "camera_settings": {
+        "title": "Camera settings",
+        "description": "Frigate camera {camera}. Each setting starts from what Frigate's config says.",
+        "data": {
+          "name": "Name",
+          "stream": "Stream",
+          "stream_low": "Lighter stream (optional)",
+          "talk": "Talk",
+          "ptz": "Pan, tilt and zoom",
+          "presets": "Presets (optional)",
+          "labels": "Activity shows only (optional)",
+          "aspect_ratio": "Picture shape (optional)",
+          "doorbell_entity": "Doorbell press sensor (optional)"
+        },
+        "data_description": {
+          "stream": "The go2rtc stream to watch and talk through.",
+          "stream_low": "A substream, used to save data. Blank: always the stream above.",
+          "talk": "Needs the camera's RTSP source, with its backchannel, in go2rtc (see the README).",
+          "ptz": "Through Frigate, which needs ONVIF set up for the camera.",
+          "presets": "Frigate's preset names for the camera, separated by commas, as one-tap buttons.",
+          "labels": "Objects to show in the activity feed. Blank: everything Frigate tracks.",
+          "aspect_ratio": "Width/height, e.g. 16/9. Blank: from the camera's detect resolution.",
+          "doorbell_entity": "When it turns on, an open panel switches to this camera."
+        }
+      }
+    },
+    "error": {
+      "url_path_invalid": "Use lower-case letters, numbers and hyphens, starting with a letter or number.",
+      "url_path_reserved": "Home Assistant already uses this address.",
+      "url_path_taken": "Another camera panel already has this address.",
+      "aspect_ratio_invalid": "Write it as width/height, e.g. 16/9."
+    },
+    "abort": {
+      "frigate_not_ready": "The Frigate integration isn't set up at the moment. Try again once it is."
+    }
+  },
+  "selector": {
+    "theme": {
+      "options": {
+        "porch": "The panel's own dark look",
+        "ha": "Follow the Home Assistant theme"
+      }
+    },
+    "low_bandwidth": {
+      "options": {
+        "auto": "On mobile data, with Data Saver on, or away from home",
+        "mobile": "On mobile data or with Data Saver on",
+        "always": "Always",
+        "never": "Never"
+      }
+    },
+    "talk_quality": {
+      "options": {
+        "same": "Keep the same stream",
+        "sd": "Switch to the lighter stream"
+      }
+    }
+  }
+}
